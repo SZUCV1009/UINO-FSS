@@ -1,0 +1,28 @@
+imageEncoder:
+  arch: vit_base
+  patch_size: 14
+  layerscale: 1e-05
+  ffn_layer: mlp
+  block_chunks: 0
+  qkv_bias: True
+  proj_bias: True
+  ffn_bias: True
+  num_register_tokens: 0
+  interpolate_offset: 0.1
+  interpolate_antialias: False
+  drop_path_rate: 0.3
+  drop_path_uniform: True
+  pretrained_weights: "./checkpoints/dinov2_vitb14_pretrain.pth"
+  img_size: 518
+  only_teacher: False
+  embed_dim: 768
+
+maskDecoder:
+  prompt_embed_dim: 256
+  pretrained_weights: "./checkpoints/sam_maskDecoder_H.pth"
+
+promptEncoder:
+  patch_size: 14
+  image_size: 518
+  prompt_embed_dim: 256
+  pretrained_weights: "./checkpoints/sam_promptEncoder_H.pth"
