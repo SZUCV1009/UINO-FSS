@@ -1,0 +1,19 @@
+{
+  "archive": "COCO2014-semantic-masks.tar.gz",
+  "sha256": "1904a8165bc6bfc74a4127e37602579f656599f193b8292f498d4d48581142b3",
+  "archive_bytes": 385009734,
+  "total_png_files": 122218,
+  "splits": {
+    "train2014": {
+      "files": 82081,
+      "uncompressed_bytes": 333916156
+    },
+    "val2014": {
+      "files": 40137,
+      "uncompressed_bytes": 162218895
+    }
+  },
+  "layout": "COCO2014/annotations/{train2014,val2014}/*.png",
+  "source_validation": "Every archived PNG matches the SHA-256 of the source bytes.",
+  "contents": "Semantic annotation PNGs only; no RGB JPG images or raw annotation JSON."
+}

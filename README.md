@@ -135,7 +135,7 @@ This strictly loads the final checkpoint, reads an episode, performs GPU segment
 
 Download from **[Google Drive — UINO-FSS model weights](https://drive.google.com/drive/folders/1acBYYjk-UTwcS798ueKlb-rXPQtnCIy_)**.
 
-On November 4, 2026, all **34 weight files (approximately 14.57 GiB)** in the destination folder were compared against the local source with `rclone check`: **34 matching files, 0 differences**. This verifies uploaded content; access without a Google login depends on the folder's sharing settings.
+On November 4, 2026, all **34 weight files (approximately 14.57 GiB)** in the destination folder were compared against the local source with `rclone check`: **34 matching files, 0 differences**. This verifies uploaded content. The model-weight root folder currently requires owner-granted access; request access from the folder owner if prompted. The separately linked COCO mask subfolder in Section 3 is readable by anyone with its link.
 
 The complete file list and byte sizes are in [weights-manifest.csv](weights-manifest.csv). Preserve the directory names when placing downloaded weights in the repository:
 
@@ -197,13 +197,60 @@ Use the provided `splits/pascal/val/fold{0,1,2,3}.txt` files. For the layout abo
 
 ### COCO-20i
 
+#### Download the semantic annotation masks
+
+We provide the **same preprocessed PNG masks used by the local COCO loader**, without changing their pixel values or class numbering:
+
+- **[Download COCO2014-semantic-masks.tar.gz — Google Drive](https://drive.google.com/file/d/1pczbyAjScA5yqlRzF8rkbuAKvYJKyQUG/view)**
+- [Annotation download folder](https://drive.google.com/drive/folders/17i9FxSG_9yjXaMM8pfiKLH7w2fBzZlgm)
+- [SHA-256 checksum](data/COCO2014-semantic-masks.sha256) · [File-count and size manifest](data/COCO2014-semantic-masks.json)
+
+| Content | PNG masks |
+| --- | ---: |
+| `COCO2014/annotations/train2014/` | 82,081 |
+| `COCO2014/annotations/val2014/` | 40,137 |
+| Total | **122,218** |
+
+Archive size: **385,009,734 bytes (367.17 MiB)**. The archive contains annotation PNGs only; RGB JPG images are downloaded separately. The accompanying JSON is a counts/checksum manifest, not the COCO instance annotation JSON.
+
+On November 5, 2026, every archived PNG was compared against its source SHA-256, all PNG chunk CRCs and 8-bit single-channel formats were checked, every pixel was confirmed to use an ID in 0–80, and the three uploaded release files matched their local copies. All **39,059 distinct PNG paths** referenced by the four supplied COCO validation folds exist in the bundle. See the [label validation record](data/COCO2014-mask-validation.json).
+
+**Use these supplied masks unchanged. No JSON-to-PNG conversion is required.** The loader uses background 0 and contiguous foreground IDs 1–80 matching the class order in `dataset/coco.py`; do not substitute the original, non-contiguous COCO category IDs or RGB visualization masks.
+
+#### Download the original RGB images
+
+Get **2014 Val images (`val2014.zip`)** from the [official COCO download page](https://cocodataset.org/#download). All four validation metadata files in this release reference `val2014` images. The archive also includes `train2014` masks; download **2014 Train images (`train2014.zip`)** separately if you need those corresponding JPGs.
+
+From the repository root, extract the official image ZIP into `COCO2014`:
+
+```bash
+DATA_ROOT=/path/to/datasets
+mkdir -p "$DATA_ROOT/COCO2014"
+python -m zipfile -e /path/to/downloads/val2014.zip "$DATA_ROOT/COCO2014"
+```
+
+#### Verify and extract the masks
+
+Place the downloaded `COCO2014-semantic-masks.tar.gz` in the repository root. In the same terminal, verify its checksum before extracting:
+
+```bash
+sha256sum -c data/COCO2014-semantic-masks.sha256
+# Expected: COCO2014-semantic-masks.tar.gz: OK
+
+tar -xzf COCO2014-semantic-masks.tar.gz -C "$DATA_ROOT"
+```
+
+Extract the mask archive into **`$DATA_ROOT`**, the parent of `COCO2014`. The archive already includes the `COCO2014/annotations/` prefix.
+
+The resulting layout is:
+
 ```text
 /path/to/datasets/
 └── COCO2014/
-    ├── train2014/
-    │   └── COCO_train2014_*.jpg
     ├── val2014/
     │   └── COCO_val2014_*.jpg
+    ├── train2014/                         # Optional JPGs for released validation
+    │   └── COCO_train2014_*.jpg
     └── annotations/
         ├── train2014/
         │   └── COCO_train2014_*.png
@@ -211,9 +258,16 @@ Use the provided `splits/pascal/val/fold{0,1,2,3}.txt` files. For the layout abo
             └── COCO_val2014_*.png
 ```
 
-Use the supplied `splits/coco/val/fold{0,1,2,3}.pkl` metadata. Each relative image name, such as `val2014/COCO_val2014_*.jpg`, maps to `COCO2014/annotations/val2014/COCO_val2014_*.png`.
+Use the supplied `splits/coco/val/fold{0,1,2,3}.pkl` files. Each relative name such as `val2014/COCO_val2014_*.jpg` maps to `COCO2014/annotations/val2014/COCO_val2014_*.png`. The masks include more annotated images than the evaluation metadata selects; use the supplied splits for comparisons.
 
-The loader requires **preprocessed semantic PNG masks**, with contiguous class IDs 1–80 matching the class order in `dataset/coco.py`, and background 0. Raw COCO annotation JSON alone is insufficient. This release does not provide a standalone JSON-to-semantic-mask conversion script; prepare compatible masks before running COCO evaluation.
+After preparing the environment and model weights in Sections 1–2, test a real COCO episode:
+
+```bash
+python scripts/check_environment.py \
+  --datapath "$DATA_ROOT" --benchmark coco --fold 0
+```
+
+Use Section 4 for full evaluation. Raw COCO annotation JSON is not read by this test loader.
 
 ## 4. Run evaluation
 
@@ -321,6 +375,7 @@ mIoU averages accumulated foreground IoUs over the fold's classes. FB-IoU pools 
 - Strict loading of Pascal/COCO fold 0 weights and real-image GPU inference succeed in the fresh environment.
 - One sample from each of the eight Pascal/COCO validation folds loads with expected image/mask shapes.
 - The 34 uploaded model weights match their local source files.
+- The COCO mask archive preserves all 122,218 source PNGs; all validation metadata paths are covered, and uploaded archive/manifest/checksum files match their local copies.
 
 A fresh `uino-fss` environment has passed `pip check`, both CUDA scan kernel comparisons, real-image GPU smoke tests for Pascal and COCO fold 0, and the full 1,000-episode Pascal fold 0 evaluation. The Conda lock has also been used to recreate a separate clean environment. See Section 1 for the tested platform and installation commands.
 
@@ -330,7 +385,7 @@ A fresh `uino-fss` environment has passed `pip check`, both CUDA scan kernel com
 | --- | --- |
 | Missing Pascal JPG or PNG | Check `--datapath` and the augmented labels directory |
 | Missing initialization checkpoint | Download the four required `checkpoints/` files from Drive |
-| Missing COCO PNG | Prepare semantic PNG masks; annotation JSON alone is insufficient |
+| Missing COCO PNG | Download the supplied semantic masks, verify SHA-256, and extract into the parent of `COCO2014` as in Section 3 |
 | Missing configuration or split file | Run from the repository root |
 | `xFormers not available` | Optional dependency notice; the recorded run completed with it |
 | Deprecated `timm.models.layers` warning | Comes from bundled VMamba imports and also appeared in the recorded run |
