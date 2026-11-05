@@ -59,3 +59,7 @@ typing-extensions==4.14.0
 typing-inspection==0.4.1
 urllib3==2.4.0
 yacs==0.1.8
+# Required by the Mamba selective_scan_cuda backend.
+regex==2024.11.6
+tokenizers==0.19.1
+transformers==4.43.3

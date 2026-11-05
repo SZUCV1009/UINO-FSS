@@ -11,78 +11,125 @@ UINO-FSS combines a DINOv2 encoder with a lightweight segmenter. Hierarchical di
 
 This release documents **1-shot evaluation on PASCAL-5i and COCO-20i**. Training instructions are not included. The paper also reports 5-shot and FSS-1000 results; those evaluation paths are not supported by this release.
 
-## 1. Environment
+## 1. Build the evaluation environment
 
-### Reference environment
+### Tested platform and prerequisites
 
-The reference is the existing Linux `dinov2` Conda environment used for the recorded Pascal evaluation:
+**Validated in a fresh Conda environment on November 5, 2026:** Pascal fold 0, 1-shot completed all 1,000 episodes with **80.66 mIoU / 90.42 FB-IoU**. COCO fold 0 also passed a real-image GPU smoke test. See the [validation record](environment/validation-2026-11-05.md).
 
-| Component | Installed version |
+Use **Linux x86_64**. The validation platform is Ubuntu 22.04, an NVIDIA RTX A6000 (compute capability 8.6), and NVIDIA driver 560.35.03. Install Conda and Git first, and make sure `nvidia-smi` works in the same terminal/container that will run the commands. The host GPU driver is not installed by Conda.
+
+This CUDA 11.8 / PyTorch 2.3.1 recipe targets the tested hardware/software baseline. It does not claim support for every GPU generation, Windows, macOS, ARM, or a container without GPU access. Keep at least 30 GB free for the environment, package caches, toolkit, and build; weights and datasets need additional space. Network access to the Conda channels, PyPI, the PyTorch wheel index, and GitHub is required.
+
+The installation uses:
+
+| Component | Version |
 | --- | --- |
-| Python | 3.10.18 |
-| PyTorch | 2.3.1+cu118 |
-| torchvision | 0.18.1+cu118 |
-| PyTorch CUDA runtime | 11.8 |
-| Conda `cuda-nvcc` | 11.8.89 |
+| Python | 3.10.22 |
+| PyTorch / torchvision | 2.3.1+cu118 / 0.18.1+cu118 |
+| CUDA development components | 11.8 (`nvcc` 11.8.89) |
+| Conda GCC / G++ | 11.2.0 |
 | NumPy | 2.2.6 |
-| Albumentations | 2.0.8 |
-| OpenCV headless | 4.11.0.86 |
-| timm | 1.0.15 |
-| OmegaConf | 2.3.0 |
-| einops | 0.8.1 |
+| Albumentations / OpenCV headless | 2.0.8 / 4.11.0.86 |
 | Triton | 2.3.1 |
-| VMamba `selective_scan` | 0.0.2 |
+| Mamba CUDA backend | mamba-ssm 2.2.2 |
+| VMamba selective-scan source | VMamba commit `2ed52ead062a51a64521ed3871d52914bf532876` |
 
-An NVIDIA GPU and a compatible driver are required: evaluation utilities call `.cuda()` directly. CPU-only evaluation is not supported. No minimum GPU memory claim is made for this release.
+[`environment/conda-linux-64.lock`](environment/conda-linux-64.lock) records exact Conda artifacts and checksums for Python, CUDA headers/libraries, and the compiler. [`requirements.txt`](requirements.txt) pins the evaluation Python packages. [`environment/dinov2-packages.txt`](environment/dinov2-packages.txt) is the older complete `dinov2` reference snapshot, including unrelated packages; do not install that snapshot as a requirements file.
 
-[`requirements.txt`](requirements.txt) pins the installed versions of the evaluation dependencies and their active package dependencies. [`environment/dinov2-packages.txt`](environment/dinov2-packages.txt) records the full local Python package snapshot, including packages unrelated to evaluation. The snapshot is a reference, not a standalone installation file.
+### Step 1 — clone and create a new environment
 
-### Installation
+Run these commands in Bash. Use a new environment; do not install into `base` or overwrite an existing experiment environment.
 
 ```bash
 git clone https://github.com/SZUCV1009/UINO-FSS.git
 cd UINO-FSS
 
-conda create -n uino-fss python=3.10.18 pip=25.1 setuptools=78.1.1 wheel=0.45.1 -y
+conda create -n uino-fss --file environment/conda-linux-64.lock -y
 conda activate uino-fss
 
+python --version
+nvidia-smi
+```
+
+The Conda lock includes **CUDA 11.8 nvcc, the runtime and development headers/libraries required by selective-scan, and GCC/G++**. Profiling GUI tools are not required. No system CUDA installation or `sudo` is needed for the environment itself. The host NVIDIA driver and GPU access remain prerequisites. The explicit lock avoids re-solving toolkit/compiler versions against changing channel metadata.
+
+### Step 2 — select this environment's CUDA and compiler
+
+```bash
+source scripts/activate_cuda.sh
+
+"$CUDA_HOME/bin/nvcc" --version
+"$CXX" --version
+```
+
+This sets `CUDA_HOME`, `CC`, `CXX`, `CUDAHOSTCXX`, the library path, and `MAX_JOBS=2` to the active Conda environment. It prevents accidentally compiling with a system CUDA 12.x toolkit. Source this file again after opening a new terminal and activating `uino-fss`. Do not add CUDA's `lib/stubs` directory to `LD_LIBRARY_PATH`.
+
+### Step 3 — install the pinned Python dependencies
+
+```bash
 python -m pip install torch==2.3.1 torchvision==0.18.1 \
   --index-url https://download.pytorch.org/whl/cu118
-python -m pip install -r requirements.txt
+python -m pip install -r requirements.txt --index-url https://pypi.org/simple
 python -m pip check
 ```
 
-The repository contains the DINOv2 and SAM source modules needed by this entry point; separate installations of those repositories are unnecessary. Run evaluation commands from the repository root.
+Install the official CUDA 11.8 torch/torchvision wheels **before** the remaining requirements. The second command pins their dependencies to the tested versions. Do not subsequently upgrade torch, torchvision, NumPy, Triton, or the CUDA build stack independently.
 
-These pins now match the existing environment, including **NumPy 2.2.6**. Installation into a fresh environment and full GPU evaluation of this release have **not** been repeated. Package versions alone do not reproduce the GPU driver, compiler, or compiled extension binaries. The earlier README's NumPy 1.26.4 substitution has been removed.
+DINOv2 and SAM source modules are bundled in this repository. xFormers is optional. The native Mamba backend is required by the model's `v0` forward path and is installed in the next step; a VMamba `oflex` installation alone is insufficient.
 
-### Selective-scan extension
+### Step 4 — install both CUDA scan backends
 
-For the accelerated backend, install a compatible CUDA toolkit and C++ compiler. The reference Conda environment contains CUDA `nvcc` 11.8.89:
+Install Mamba's native `selective_scan_cuda` backend first:
 
 ```bash
-conda install -c nvidia/label/cuda-11.8.0 cuda-nvcc=11.8.89 -y
-nvcc --version
+python -m pip install --no-build-isolation --no-deps mamba-ssm==2.2.2 \
+  --index-url https://pypi.org/simple
 ```
 
-VMamba's CUDA selective-scan extension is installed separately from `requirements.txt`. Build it with PyTorch already installed and an NVIDIA GPU available:
+Its installer uses a compatible upstream wheel when available, otherwise builds locally. The compiler and CUDA headers from Step 2 must remain available. Its Python dependencies, including transformers, are pinned in `requirements.txt`.
+
+Next build VMamba's `selective_scan_cuda_oflex` backend. Keep an NVIDIA GPU visible during the build: upstream setup detects the visible GPU's compute capability. This is a native build for that architecture; rebuild if moving to a different GPU architecture or changing PyTorch/CUDA.
 
 ```bash
-git clone https://github.com/MzeroMiko/VMamba.git /tmp/uino-fss-vmamba
-python -m pip install --no-build-isolation /tmp/uino-fss-vmamba/kernels/selective_scan
-python -c "import selective_scan_cuda_oflex; print('Selective scan CUDA extension: OK')"
+mkdir -p .build
+git clone https://github.com/MzeroMiko/VMamba.git .build/VMamba
+git -C .build/VMamba checkout --detach 2ed52ead062a51a64521ed3871d52914bf532876
+
+python -m pip install --no-build-isolation --no-deps \
+  ./.build/VMamba/kernels/selective_scan
+python -m pip check
 ```
 
-Source: [VMamba selective-scan kernels](https://github.com/MzeroMiko/VMamba/tree/main/kernels/selective_scan). This command follows current upstream source; the exact source commit used to build the local extension was not recorded. A successful build and import on the target machine must be checked. Rebuild after changing PyTorch/CUDA. Installing `cuda-nvcc` alone does not guarantee that every build-tool requirement is satisfied.
+The commit is fixed, so the build does not silently change with upstream HEAD. `--no-build-isolation` uses the installed PyTorch/CUDA toolchain; `--no-deps` prevents the extension installer from replacing the pinned packages. This step can take several minutes. If rerunning it, reuse the existing `.build/VMamba` checkout instead of cloning into a nonempty directory.
 
-The bundled implementation has a slower PyTorch fallback when no supported CUDA scan extension is importable. `mamba-ssm==2.2.2` and `causal-conv1d==1.4.0` exist in the full reference snapshot, but are not directly imported by this evaluation path; they are not required when using the VMamba extension above. xFormers is optional for this configuration; the recorded Pascal run completed without it.
-
-Check the installation:
+### Step 5 — verify actual GPU execution
 
 ```bash
-python -c "import torch; print(torch.__version__); print('CUDA runtime:', torch.version.cuda); print('GPU available:', torch.cuda.is_available())"
+python scripts/check_environment.py
 python test.py --help
 ```
+
+The check verifies all pinned package versions, the NumPy↔Tensor bridge, GPU matrix multiplication, torchvision CUDA NMS, and both Mamba and VMamba CUDA scan kernels against the PyTorch reference implementation. It must finish with `Environment checks passed.`; an import alone is not a sufficient installation test.
+
+After downloading the required weights and preparing a dataset using Sections 2–3, check a complete real-image prediction:
+
+```bash
+python scripts/check_environment.py \
+  --datapath /path/to/datasets --benchmark pascal --fold 0
+```
+
+This strictly loads the final checkpoint, reads an episode, performs GPU segmentation, and computes intersection/union. It checks that the inference pipeline runs; it is not a full mIoU evaluation. Use Section 4 for the complete benchmark.
+
+### Installation troubleshooting
+
+- **CUDA unavailable:** check `nvidia-smi`, driver installation, GPU visibility, and container GPU passthrough. Conda cannot fix missing host GPU access.
+- **CUDA version mismatch / missing headers:** activate `uino-fss` and source `scripts/activate_cuda.sh` before building. `CUDA_HOME` must point to the active environment.
+- **Compiler mismatch:** use the locked Conda GCC/G++ 11.2, not an arbitrary system compiler.
+- **Missing `selective_scan_cuda` / `NameError` in `forwardv0`:** install `mamba-ssm==2.2.2` as in Step 4; `oflex` alone does not supply that module.
+- **Extension import or `no kernel image` error:** rebuild the extension on the target GPU architecture with this exact torch/CUDA stack.
+- **Build killed for memory pressure:** retry with `export MAX_JOBS=1` before the extension installation command.
+- **Download or TLS failure:** check the machine's network/proxy and certificates. These commands require reachable package servers; do not disable certificate verification.
 
 ## 2. Download model weights
 
@@ -253,9 +300,9 @@ The following are paper-reported **mIoU (%)**, from Tables I and II, using DINOv
 
 5-shot rows are included for paper reference only. The current model passes `s_input.squeeze(1)` to a four-dimensional image encoder and has no multi-support aggregation in `test.py`; changing the shot count is insufficient to reproduce 5-shot. FSS-1000 is not registered in the dataset factory.
 
-### Recorded local result
+### Fresh-environment reproduction
 
-The original local evaluation on Pascal fold 0, 1-shot produced:
+On November 5, 2026, the new `uino-fss` environment completed the packaged `test.py` on Pascal fold 0, 1-shot, seed 0, for all 1,000 episodes. It reproduced the earlier `dinov2` environment result:
 
 ```text
 *** Test [@Epoch 00] Avg L: 0.00000  mIoU: 80.66   FB-IoU: 90.42   ***
@@ -271,11 +318,11 @@ mIoU averages accumulated foreground IoUs over the fold's classes. FB-IoU pools 
 
 - All Python source files parse, and README shell snippets pass syntax checks.
 - `python test.py --help` works without loading model weights.
-- Model initialization and strict loading of Pascal fold 0 weights succeed on CPU.
+- Strict loading of Pascal/COCO fold 0 weights and real-image GPU inference succeed in the fresh environment.
 - One sample from each of the eight Pascal/COCO validation folds loads with expected image/mask shapes.
 - The 34 uploaded model weights match their local source files.
 
-Full GPU evaluation of this release and installation in a new environment remain unverified. The reference package environment passes `pip check`.
+A fresh `uino-fss` environment has passed `pip check`, both CUDA scan kernel comparisons, real-image GPU smoke tests for Pascal and COCO fold 0, and the full 1,000-episode Pascal fold 0 evaluation. The Conda lock has also been used to recreate a separate clean environment. See Section 1 for the tested platform and installation commands.
 
 ## 6. Troubleshooting
 
@@ -287,6 +334,7 @@ Full GPU evaluation of this release and installation in a new environment remain
 | Missing configuration or split file | Run from the repository root |
 | `xFormers not available` | Optional dependency notice; the recorded run completed with it |
 | Deprecated `timm.models.layers` warning | Comes from bundled VMamba imports and also appeared in the recorded run |
+| `selective_scan_cuda` import failure / `NameError` | Install `mamba-ssm==2.2.2` using Section 1; the model requires this backend |
 | `selective_scan_cuda_oflex` import failure | Build/rebuild the extension against the current PyTorch/CUDA stack |
 | CUDA unavailable | Check GPU access, driver, CUDA-enabled PyTorch, and `CUDA_VISIBLE_DEVICES` |
 | State-dict key mismatch | Check model configuration and checkpoint selection; retain strict loading |
