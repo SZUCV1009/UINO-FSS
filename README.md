@@ -20,48 +20,108 @@ This repository provides 1-shot evaluation code for PASCAL-5i and COCO-20i.
 - An NVIDIA GPU with a CUDA-compatible driver
 - Conda and Git
 
-The environment uses Python 3.10, PyTorch 2.3.1, torchvision 0.18.1, CUDA 11.8, and GCC/G++ 11.2. The Conda lock file includes the CUDA compiler, development libraries, and C++ toolchain.
+| Component | Version |
+| --- | --- |
+| Python | 3.10 |
+| PyTorch | 2.3.1+cu118 |
+| torchvision | 0.18.1+cu118 |
+| CUDA | 11.8 |
+| GCC / G++ | 11.2 |
+| NumPy | 2.2.6 |
+| Mamba | 2.2.2 |
 
-### Environment setup
+Run the following steps in Bash, in the order shown. Keep the GPU available while installing the CUDA extensions.
+
+### 1. Clone the repository
 
 ```bash
 git clone https://github.com/SZUCV1009/UINO-FSS.git
 cd UINO-FSS
+```
 
+Run all subsequent commands from this repository directory.
+
+### 2. Create the Conda environment
+
+```bash
 conda create -n uino-fss --file environment/conda-linux-64.lock -y
 conda activate uino-fss
-source scripts/activate_cuda.sh
+```
 
+The lock file installs Python, the CUDA 11.8 compiler and development libraries, and GCC/G++ 11.2. The NVIDIA driver must already be installed on the host.
+
+### 3. Configure the CUDA toolchain
+
+```bash
+source scripts/activate_cuda.sh
+```
+
+This selects the CUDA compiler and C++ toolchain in the active Conda environment. Check that CUDA 11.8 and GCC/G++ 11.2 are selected:
+
+```bash
+python --version
+"$CUDA_HOME/bin/nvcc" --version
+"$CXX" --version
+nvidia-smi
+```
+
+### 4. Install PyTorch and Python dependencies
+
+Install the CUDA 11.8 builds of PyTorch and torchvision first:
+
+```bash
 python -m pip install torch==2.3.1 torchvision==0.18.1 \
   --index-url https://download.pytorch.org/whl/cu118
-python -m pip install -r requirements.txt --index-url https://pypi.org/simple
+```
 
+Then install the remaining dependencies:
+
+```bash
+python -m pip install -r requirements.txt --index-url https://pypi.org/simple
+```
+
+DINOv2 and SAM source modules are included in this repository. xFormers is optional.
+
+### 5. Install the Mamba CUDA backend
+
+```bash
 python -m pip install --no-build-isolation --no-deps mamba-ssm==2.2.2 \
   --index-url https://pypi.org/simple
+```
 
+This installs `selective_scan_cuda`, which is used by the model's Mamba layers. Keep the environment from Steps 2–3 active during installation.
+
+### 6. Build the VMamba selective-scan extension
+
+```bash
 mkdir -p .build
 git clone https://github.com/MzeroMiko/VMamba.git .build/VMamba
 git -C .build/VMamba checkout --detach 2ed52ead062a51a64521ed3871d52914bf532876
+
 python -m pip install --no-build-isolation --no-deps \
   ./.build/VMamba/kernels/selective_scan
-
-python -m pip check
 ```
 
-Keep the GPU visible while building the CUDA extensions. Both `mamba-ssm` and VMamba's selective-scan extension are required. DINOv2 and SAM source modules are included in this repository; xFormers is optional.
+This builds `selective_scan_cuda_oflex`. Both this extension and the Mamba backend from Step 5 are required. The build uses the GPU architecture visible during installation. If `.build/VMamba` already exists, reuse it and run the checkout and installation commands.
 
-In a new terminal, activate the environment and configure its CUDA toolchain before running:
+### 7. Check the installation
 
 ```bash
+python -m pip check
+python scripts/check_environment.py
+```
+
+`pip check` checks package dependencies. `check_environment.py` checks GPU execution and both CUDA scan backends. Successful completion prints `Environment checks passed.`.
+
+### Using the environment in a new terminal
+
+```bash
+cd /path/to/UINO-FSS
 conda activate uino-fss
 source scripts/activate_cuda.sh
 ```
 
-Optionally check the installation with:
-
-```bash
-python scripts/check_environment.py
-```
+Then follow the model-weight, dataset, and evaluation instructions below.
 
 ## Model Weights
 
