@@ -198,7 +198,7 @@ Set `CUDA_VISIBLE_DEVICES` to select a GPU. Logs are saved under `log_test/<benc
 
 ## Results
 
-Results reported in the paper, measured by mIoU (%):
+Performance on PASCAL-5i and COCO-20i (mIoU, %):
 
 | Dataset | Setting | Fold 0 | Fold 1 | Fold 2 | Fold 3 | Mean |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
@@ -206,8 +206,6 @@ Results reported in the paper, measured by mIoU (%):
 | PASCAL-5i | 5-shot | 84.4 | 87.3 | 79.0 | 85.5 | 84.1 |
 | COCO-20i | 1-shot | 62.2 | 66.0 | 65.5 | 64.2 | 64.5 |
 | COCO-20i | 5-shot | 66.6 | 73.3 | 70.9 | 68.1 | 69.7 |
-
-The evaluation commands provided in this repository cover the 1-shot setting.
 
 ## Citation
 
