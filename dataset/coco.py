@@ -93,13 +93,18 @@ class FewShotCOCO(Dataset):
         nclass_trn = self.nclass // self.nfolds
         class_ids_val = [self.fold + self.nfolds * v for v in range(nclass_trn)]
         class_ids_trn = [x for x in range(self.nclass) if x not in class_ids_val]
-        class_ids = class_ids_trn if self.mode == 'trn' else class_ids_val
+        class_ids = class_ids_trn if self.mode in ['train', 'trn'] else class_ids_val
 
         return class_ids
 
     # ==========================
     # LISTS
     # ==========================
+    def _resolve_metadata_path(self, path):
+        marker = 'COCO2014/'
+        relative = path.split(marker, 1)[1] if marker in path else path.lstrip('./')
+        return os.path.join(self.base_path, relative)
+
     def _load_lists_metadata(self):
         mode_folder = 'train' if self.mode == 'train' else 'val'
         list_root = os.path.join('./lists/coco/fss_list', mode_folder)
@@ -114,22 +119,24 @@ class FewShotCOCO(Dataset):
         with open(sub_class_file, 'r') as f:
             class_file_list = eval(f.read())
 
+        metadata = [(self._resolve_metadata_path(image), self._resolve_metadata_path(mask))
+                    for image, mask in metadata]
+        class_file_list = {
+            key: [(self._resolve_metadata_path(image), self._resolve_metadata_path(mask))
+                  for image, mask in entries]
+            for key, entries in class_file_list.items()
+        }
         return metadata, class_file_list
 
     def _getitem_lists(self, idx):
         image_path, label_path = self.data_list[idx]
-        tmp_sperate = image_path.split('/')
-        if 'VOC' in image_path:
-            query_name = tmp_sperate[5]
-        else:
-            query_name = tmp_sperate[4]
-        image_path = "../COCO2014"+image_path[18:]
+        query_name = os.path.basename(image_path)
+
         image = cv2.imread(image_path, cv2.IMREAD_COLOR)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         ori_image = image.copy()
         image = np.float32(image)
         img_cv2 = image.copy()
-        label_path = "../COCO2014"+label_path[18:]
         label = cv2.imread(label_path, cv2.IMREAD_GRAYSCALE)
         ori_label = label.copy()
         # label_b = cv2.imread(os.path.join(self.base_path, label_path.split('/')[-1]), cv2.IMREAD_GRAYSCALE)
@@ -198,8 +205,6 @@ class FewShotCOCO(Dataset):
         for k in range(self.shot):
             support_image_path = support_image_path_list[k]
             support_label_path = support_label_path_list[k]
-            support_image_path = "../COCO2014" + support_image_path[18:]
-            support_label_path = "../COCO2014" + support_label_path[18:]
             support_image = cv2.imread(support_image_path, cv2.IMREAD_COLOR)
             support_image = cv2.cvtColor(support_image, cv2.COLOR_BGR2RGB)
             support_image = np.float32(support_image)

@@ -280,15 +280,18 @@ class uino_fss(nn.Module):
     def forward(
         self,
         input,
-        s_input,
-        s_mask,
+        s_input=None,
+        s_mask=None,
         stop_layer=4,
         is_light=False,
         is_sparse=True,
         ce_flag=True,
         is_ba=True,
         is_pcs=True,
+        distill_only=False,
     ):
+        if distill_only:
+            return self.ba_forward(input, stop_layer)
         with torch.no_grad():
             batch_cosine_map, t_feat, s_feat = self.masked_cos_sim(input, s_input, s_mask, stop_layer)
         batch_cosine_map, t_feat, s_feat = batch_cosine_map.detach(), t_feat.detach(), s_feat.detach()

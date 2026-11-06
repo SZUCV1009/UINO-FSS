@@ -86,7 +86,7 @@ class FewShotPASCAL(Dataset):
         class_ids_val = [self.fold * nclass_trn + i for i in range(nclass_trn)]
         class_ids_trn = [x for x in range(self.nclass) if x not in class_ids_val]
 
-        if self.mode == 'trn':
+        if self.mode in ['train', 'trn']:
             return class_ids_trn
         else:
             return class_ids_val
@@ -94,6 +94,11 @@ class FewShotPASCAL(Dataset):
     # ==========================
     # LISTS
     # ==========================
+    def _resolve_metadata_path(self, path):
+        marker = 'VOC2012/'
+        relative = path.split(marker, 1)[1] if marker in path else path.lstrip('./')
+        return os.path.join(os.path.join(self.datapath, 'VOCdevkit', 'VOC2012'), relative)
+
     def _load_lists_metadata(self):
         mode_folder = 'train' if self.mode == 'train' else 'val'
         list_root = os.path.join('./lists/pascal/fss_list', mode_folder)
@@ -108,26 +113,25 @@ class FewShotPASCAL(Dataset):
         with open(sub_class_file, 'r') as f:
             class_file_list = eval(f.read())
 
+        metadata = [(self._resolve_metadata_path(image), self._resolve_metadata_path(mask))
+                    for image, mask in metadata]
+        class_file_list = {
+            key: [(self._resolve_metadata_path(image), self._resolve_metadata_path(mask))
+                  for image, mask in entries]
+            for key, entries in class_file_list.items()
+        }
         return metadata, class_file_list
 
     def _getitem_lists(self, idx):
         idx %= len(self.data_list)
         image_path, label_path = self.data_list[idx]
-        tmp_sperate = image_path.split('/')
-        if 'VOC' in image_path:
-            query_name = tmp_sperate[5]
-        else:
-            query_name = tmp_sperate[4]
+        query_name = os.path.basename(image_path)
 
-        file_dic = os.path.join(self.datapath, "VOCdevkit", "VOC2012")
-
-        image_path = file_dic+image_path[29:]
         image = cv2.imread(image_path, cv2.IMREAD_COLOR)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         ori_image = image.copy()
         image = np.float32(image)
         img_cv2 = image.copy()
-        label_path = file_dic+label_path[29:]
         '''label = cv2.imread(label_path, cv2.IMREAD_GRAYSCALE)'''
         label = np.array(Image.open(label_path))
         ori_label = label.copy()
@@ -191,8 +195,6 @@ class FewShotPASCAL(Dataset):
         for k in range(self.shot):
             support_image_path = support_image_path_list[k]
             support_label_path = support_label_path_list[k]
-            support_image_path = file_dic + support_image_path[29:]
-            support_label_path = file_dic + support_label_path[29:]
             support_image = cv2.imread(support_image_path, cv2.IMREAD_COLOR)
             support_image = cv2.cvtColor(support_image, cv2.COLOR_BGR2RGB)
             support_image = np.float32(support_image)
@@ -270,11 +272,11 @@ class FewShotPASCAL(Dataset):
             return fold_n_metadata
 
         img_metadata = []
-        if self.mode == 'trn':  # For training, read image-metadata of "the other" folds
+        if self.mode in ['train', 'trn']:  # For training, read image-metadata of "the other" folds
             for fold_id in range(self.nfolds):
                 if fold_id == self.fold:  # Skip validation fold
                     continue
-                img_metadata += read_metadata(self.mode, self.fold)
+                img_metadata += read_metadata(self.mode, fold_id)
         elif self.mode == 'val':  # For validation, read image-metadata of "current" fold
             img_metadata = read_metadata(self.mode, self.fold)
         else:

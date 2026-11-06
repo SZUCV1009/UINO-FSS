@@ -22,3 +22,11 @@ vis/
 VOCdevkit/
 COCO2014/
 .DS_Store
+
+# Training outputs
+/outputs/
+/log/
+/logs/
+/exp_loss*/
+/sa_1b/
+events.out.tfevents.*

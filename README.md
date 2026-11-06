@@ -10,7 +10,7 @@ Wei Zhuo, Zhiyue Tang, Wufeng Xue, Hao Ding, Junkai Ji, and Linlin Shen
 
 UINO-FSS unifies representation learning and few-shot segmentation through hierarchical distillation and Mamba-based hypercorrelation. It transfers SAM's embedding knowledge into a lightweight bottleneck adapter attached to DINOv2 and generates visual prompts for few-shot segmentation.
 
-This repository provides 1-shot evaluation code for PASCAL-5i and COCO-20i.
+This repository provides hierarchical distillation, 1-shot segmentation training, and evaluation code for PASCAL-5i and COCO-20i.
 
 ## Installation
 
@@ -121,7 +121,7 @@ conda activate uino-fss
 source scripts/activate_cuda.sh
 ```
 
-Then follow the model-weight, dataset, and evaluation instructions below.
+Then follow the model-weight, dataset, training, and evaluation instructions below.
 
 ## Model Weights
 
@@ -177,7 +177,7 @@ Download the original COCO 2014 images from the [official COCO website](https://
 | [COCO semantic masks](https://drive.google.com/file/d/1pczbyAjScA5yqlRzF8rkbuAKvYJKyQUG/view) | 82,081 training masks and 40,137 validation masks; 367 MiB |
 | [SHA-256 checksum](data/COCO2014-semantic-masks.sha256) | Archive checksum |
 
-The supplied validation splits use `val2014` images. Download `val2014.zip` for evaluation; `train2014.zip` is optional for the current evaluation commands.
+The supplied validation splits use `val2014` images. Download `val2014.zip` for evaluation; download `train2014.zip` as well for segmentation training.
 
 From the repository root, extract the image archive:
 
@@ -201,7 +201,7 @@ The resulting structure should be:
 └── COCO2014/
     ├── val2014/
     │   └── *.jpg
-    ├── train2014/             # Optional RGB images
+    ├── train2014/             # Required for training
     │   └── *.jpg
     └── annotations/
         ├── train2014/
@@ -213,6 +213,93 @@ The resulting structure should be:
 The PNG masks contain background ID 0 and foreground IDs 1–80. Use them without changing their label values. No JSON-to-PNG conversion is needed when using the supplied masks. Evaluation splits are provided in `splits/coco/val/fold{0,1,2,3}.pkl`.
 
 For both datasets, `--datapath` points to `/path/to/datasets`, the parent of `VOCdevkit/` or `COCO2014/`.
+
+## Training
+
+Run the commands below in Bash from the repository root with the environment above activated.
+
+### Hierarchical distillation
+
+Prepare the SA-1B RGB images using the following layout. The loader uses `sa_000000` through `sa_000009` for training and `sa_000010` for validation. Mask annotations are not needed for embedding distillation.
+
+```text
+/path/to/sa_1b/
+├── sa_000000/
+│   └── *.jpg
+├── ...
+├── sa_000009/
+│   └── *.jpg
+└── sa_000010/
+    └── *.jpg
+```
+
+In addition to the four initialization weights listed above, place the full SAM-H teacher checkpoint `sam_vit_h_4b8939.pth` in `checkpoints/`. Download it from the [SAM project](https://github.com/facebookresearch/segment-anything#model-checkpoints). Obtain SA-1B images from the [SA-1B dataset](https://ai.meta.com/datasets/segment-anything/).
+
+Train the bottleneck adapter progressively at SAM/DINO input sizes of 144/126, 288/252, and 592/518. Each stage loads the preceding stage's output:
+
+```bash
+# Stage 1
+bash train_distillation.sh 1 0 144 126 4 ./outputs/distill_stage1 '' \
+  --dataset_path /path/to/sa_1b \
+  --epochs 15 --batch_size 1 --num_workers 4
+
+# Stage 2
+bash train_distillation.sh 1 0 288 252 4 ./outputs/distill_stage2 \
+  ./outputs/distill_stage1/work_dir/ckpt/iter_final.pth \
+  --dataset_path /path/to/sa_1b \
+  --epochs 15 --batch_size 1 --num_workers 4
+
+# Stage 3
+bash train_distillation.sh 1 0 592 518 4 ./outputs/distill_stage3 \
+  ./outputs/distill_stage2/work_dir/ckpt/iter_final.pth \
+  --dataset_path /path/to/sa_1b \
+  --epochs 15 --batch_size 1 --num_workers 4
+```
+
+The first two arguments specify the number of GPUs and their IDs. For two GPUs, use `2 0,1` and set `--batch_size 2` or another multiple of two. Distillation batch size is the total across all GPUs. Adjust it to the available GPU memory. The commands use AdamW with learning rate `1e-3` and weight decay `5e-4`; the DINOv2 encoder is frozen and only the bottleneck adapter is updated.
+
+Each stage saves `epoch_<epoch>.pth` and `iter_final.pth` under `<output>/work_dir/ckpt/`. The final stage output initializes the segmentation model.
+
+### Few-shot segmentation training
+
+Prepare the datasets as described above, including COCO `train2014/` images for COCO training. Training and validation episode lists for all four folds are included under `lists/<benchmark>/fss_list/`.
+
+PASCAL-5i:
+
+```bash
+bash train.sh 0 fold0 pascal ./outputs/pascal \
+  ./outputs/distill_stage3/work_dir/ckpt/iter_final.pth \
+  --datapath /path/to/datasets \
+  --bsz 1 --nworker 4 --epochs 100 \
+  --load_distilled_model --is_sparse --ce_flag --is_ba --is_pcs \
+  --mask_decoder_train_flag
+```
+
+COCO-20i:
+
+```bash
+bash train.sh 0 fold0 coco ./outputs/coco \
+  ./outputs/distill_stage3/work_dir/ckpt/iter_final.pth \
+  --datapath /path/to/datasets \
+  --bsz 1 --nworker 4 --epochs 50 \
+  --load_distilled_model --is_sparse --ce_flag --is_ba --is_pcs \
+  --mask_decoder_train_flag
+```
+
+The first argument selects the GPU IDs; use `0,1` for two-GPU DDP training. Segmentation `--bsz` is the batch size **per GPU**. Change `fold0` to `fold1`, `fold2`, or `fold3` to train the other folds. Training uses 518 × 518 inputs, AdamW with learning rate `1e-3`, weight decay `0.01`, and polynomial learning-rate decay. The DINOv2 encoder, distilled adapter, and prompt encoder are frozen; the hypercorrelation learner and mask decoder are trained.
+
+Checkpoints and TensorBoard logs are saved under `<output>/<benchmark>/<fold>/`. Evaluate a saved segmentation checkpoint with:
+
+```bash
+python test.py \
+  --datapath /path/to/datasets \
+  --benchmark pascal --fold 0 --nshot 1 --bsz 1 \
+  --checkpoint /path/to/epoch_checkpoint.pth \
+  --img_size 518 --stop_layer 4 \
+  --is_sparse --ce_flag --is_ba --is_pcs
+```
+
+For a short startup run, append `--epochs 1 --max_train_batches 3 --max_val_batches 2` to a training command. Distillation also accepts `--max_train_samples 8` to limit the image subset.
 
 ## Evaluation
 
