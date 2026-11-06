@@ -22,6 +22,14 @@ UINO-FSS unifies representation learning and few-shot segmentation through hiera
 
 This repository provides hierarchical distillation, 1-shot segmentation training, and evaluation code for PASCAL-5i and COCO-20i.
 
+## 🧩 Architecture
+
+<p align="center">
+  <img src="assets/architecture.png" alt="UINO-FSS architecture: hierarchical distillation and few-shot segmentation with the Meta-Visual Prompt Generator" width="100%">
+</p>
+
+**Overview of UINO-FSS.** Hierarchical distillation aligns DINOv2 features with SAM embeddings through a bottleneck adapter. The Meta-Visual Prompt Generator then produces dense and sparse prompts for few-shot segmentation.
+
 ## 🛠️ Installation
 
 ### Requirements
