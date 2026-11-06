@@ -1,18 +1,28 @@
+<div align="center">
+
 # UINO-FSS
 
-**UINO-FSS: Unifying Representation Learning and Few-Shot Segmentation via Hierarchical Distillation and Mamba-HyperCorrelation**
+**Unifying Representation Learning and Few-Shot Segmentation<br>via Hierarchical Distillation and Mamba-HyperCorrelation**
 
 Wei Zhuo, Zhiyue Tang, Wufeng Xue, Hao Ding, Junkai Ji, and Linlin Shen
 
-*IEEE Transactions on Image Processing*, 2026.
+*IEEE Transactions on Image Processing (TIP), 2026*
 
-[Paper](https://doi.org/10.1109/TIP.2026.3723708) | [Model Weights](https://drive.google.com/drive/folders/1acBYYjk-UTwcS798ueKlb-rXPQtnCIy_) | [COCO Annotations](https://drive.google.com/drive/folders/17i9FxSG_9yjXaMM8pfiKLH7w2fBzZlgm)
+[![Paper](https://img.shields.io/badge/Paper-IEEE_TIP_2026-00629B?style=flat-square&logo=ieee&logoColor=white)](https://doi.org/10.1109/TIP.2026.3723708)
+[![Model Weights](https://img.shields.io/badge/Model_Weights-Google_Drive-4285F4?style=flat-square&logo=googledrive&logoColor=white)](https://drive.google.com/drive/folders/1acBYYjk-UTwcS798ueKlb-rXPQtnCIy_)
+[![COCO Annotations](https://img.shields.io/badge/COCO_Annotations-Download-34A853?style=flat-square&logo=googledrive&logoColor=white)](https://drive.google.com/drive/folders/17i9FxSG_9yjXaMM8pfiKLH7w2fBzZlgm)
+
+![Python](https://img.shields.io/badge/Python-3.10-3776AB?style=flat-square&logo=python&logoColor=white)
+![PyTorch](https://img.shields.io/badge/PyTorch-2.3.1-EE4C2C?style=flat-square&logo=pytorch&logoColor=white)
+![CUDA](https://img.shields.io/badge/CUDA-11.8-76B900?style=flat-square&logo=nvidia&logoColor=white)
+
+</div>
 
 UINO-FSS unifies representation learning and few-shot segmentation through hierarchical distillation and Mamba-based hypercorrelation. It transfers SAM's embedding knowledge into a lightweight bottleneck adapter attached to DINOv2 and generates visual prompts for few-shot segmentation.
 
 This repository provides hierarchical distillation, 1-shot segmentation training, and evaluation code for PASCAL-5i and COCO-20i.
 
-## Installation
+## 🛠️ Installation
 
 ### Requirements
 
@@ -123,7 +133,7 @@ source scripts/activate_cuda.sh
 
 Then follow the model-weight, dataset, training, and evaluation instructions below.
 
-## Model Weights
+## 📦 Model Weights
 
 Download the pretrained and final model weights from [Google Drive](https://drive.google.com/drive/folders/1acBYYjk-UTwcS798ueKlb-rXPQtnCIy_). Request access from the folder owner if prompted.
 
@@ -150,7 +160,7 @@ UINO-FSS/
 
 Each evaluation requires the four initialization files in `checkpoints/` and the final checkpoint for the selected benchmark and fold. Separate distilled weights and training intermediate checkpoints are not required.
 
-## Dataset Preparation
+## 🗂️ Dataset Preparation
 
 ### PASCAL-5i
 
@@ -214,7 +224,7 @@ The PNG masks contain background ID 0 and foreground IDs 1–80. Use them withou
 
 For both datasets, `--datapath` points to `/path/to/datasets`, the parent of `VOCdevkit/` or `COCO2014/`.
 
-## Training
+## 🚀 Training
 
 Run the commands below in Bash from the repository root with the environment above activated.
 
@@ -301,7 +311,7 @@ python test.py \
 
 For a short startup run, append `--epochs 1 --max_train_batches 3 --max_val_batches 2` to a training command. Distillation also accepts `--max_train_samples 8` to limit the image subset.
 
-## Evaluation
+## 🧪 Evaluation
 
 Run commands from the repository root. The following settings use DINOv2-B, an input resolution of 518 × 518, and one support image per episode.
 
@@ -343,7 +353,7 @@ Use `--benchmark coco` for COCO-20i. Report the average of the four final fold m
 
 Set `CUDA_VISIBLE_DEVICES` to select a GPU. Logs are saved under `log_test/<benchmark>/<fold>/`; use `--logpath` to change the output directory. Add `--visualize` to save predictions under `vis/`.
 
-## Results
+## 📊 Results
 
 Performance on PASCAL-5i and COCO-20i (mIoU, %):
 
@@ -354,7 +364,7 @@ Performance on PASCAL-5i and COCO-20i (mIoU, %):
 | COCO-20i | 1-shot | 62.2 | 66.0 | 65.5 | 64.2 | 64.5 |
 | COCO-20i | 5-shot | 66.6 | 73.3 | 70.9 | 68.1 | 69.7 |
 
-## Citation
+## 📝 Citation
 
 ```bibtex
 @article{zhuo2026uinofss,
@@ -367,6 +377,6 @@ Performance on PASCAL-5i and COCO-20i (mIoU, %):
 }
 ```
 
-## Acknowledgements
+## 🤝 Acknowledgements
 
 This project builds on [DINOv2](https://github.com/facebookresearch/dinov2), [Segment Anything](https://github.com/facebookresearch/segment-anything), [Mamba](https://github.com/state-spaces/mamba), and [VMamba](https://github.com/MzeroMiko/VMamba). We thank the authors for releasing their code and models. Third-party notices are available in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
